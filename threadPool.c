@@ -61,11 +61,62 @@ ThreadPool* tpCreate(int numOfThreads){
 }
 
 static void* manage(void* param){
-
+    // casting after passing in thread
+    ThreadPool* tp = (ThreadPool*)param;
+    if (tp == NULL) error();
+    // while running or tpDestroy() called but queue wasn't empty
+    while(tp->status == RUNNING || (!osIsQueueEmpty(tp->queue) && tp->status == FINISH)) {
+        pthread_mutex_lock(&tp->mutex);
+        // when queue is empty
+        while (tp->status == RUNNING && osIsQueueEmpty(tp->queue)) {
+            pthread_cond_wait(&tp->cv, &tp->mutex);
+        }
+        Task *t = osDequeue(tp->queue);
+        pthread_mutex_unlock(&tp->mutex);
+        // call mission
+        if (t != NULL) {
+            (t->function)(t->params);
+            free(t);
+        }
+    }
+    // now cpDestroy() called and queue is empty
+    pthread_mutex_unlock(&tp->mutex);
+    pthread_exit(NULL);
 }
 
+/**
+ * Destroy thread pool.
+ *
+ * @param threadPool
+ * @param shouldWaitForTasks
+ */
 void tpDestroy(ThreadPool* threadPool, int shouldWaitForTasks){
+    int i;
+    pthread_mutex_lock(&threadPool->mutex);
+    // update status
+    if (shouldWaitForTasks == 0) {
+        threadPool->status = TERMINATE;
+    } else {
+        threadPool->status = FINISH;
+    }
+    pthread_cond_broadcast(&threadPool->cv);
+    pthread_mutex_unlock(&threadPool->mutex);
 
+    // wait for all threads
+    for (i = 0; i < threadPool->numOfThreads; ++i){
+        pthread_join(threadPool->threads[i], NULL);
+    }
+    // complete all task still in queue
+    while (!osIsQueueEmpty(threadPool->queue)){
+        Task* t = osDequeue(threadPool->queue);
+        free(t);
+    }
+    // free all memory
+    free(threadPool->threads);
+    osDestroyQueue(threadPool->queue);
+    pthread_cond_destroy(&threadPool->cv);
+    pthread_mutex_destroy(&threadPool->mutex);
+    free(threadPool);
 }
 
 /**
@@ -84,7 +135,7 @@ int tpInsertTask(ThreadPool* threadPool, void (*computeFunc) (void *), void* par
     t->function = computeFunc;
     t->params = param;
 
-    // insert func to queue
+    // insert function to queue
     pthread_mutex_lock(&(threadPool->mutex));
     osEnqueue(threadPool->queue, t);
     if (0 != pthread_cond_broadcast(&threadPool->cv)) error();
