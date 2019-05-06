@@ -1,6 +1,8 @@
-//
-// Created by shlomo on 04/05/19.
-//
+/*
+ *  Name: Shlomo Rabinovich
+ *  ID:   308432517
+ */
+
 #include <unistd.h>
 #include <memory.h>
 #include <stdlib.h>
@@ -91,6 +93,8 @@ static void* manage(void* param){
  * @param shouldWaitForTasks
  */
 void tpDestroy(ThreadPool* threadPool, int shouldWaitForTasks){
+    // if tpDestroy() already called from other thread
+    if (threadPool->status == TERMINATE || threadPool->status == FINISH) return;
     int i;
     pthread_mutex_lock(&threadPool->mutex);
     // update status

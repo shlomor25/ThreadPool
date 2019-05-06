@@ -1,3 +1,8 @@
+/*
+ *  Name: Shlomo Rabinovich
+ *  ID:   308432517
+ */
+
 #ifndef __THREAD_POOL__
 #define __THREAD_POOL__
 
