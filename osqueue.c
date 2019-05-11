@@ -1,5 +1,6 @@
 #include "osqueue.h"
 #include <stdlib.h>
+#include <stdio.h>
 
 OSQueue* osCreateQueue()
 {

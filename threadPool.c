@@ -9,6 +9,8 @@
 #include <pthread.h>
 #include "threadPool.h"
 #include "osqueue.h"
+// todo
+#include <stdio.h>
 
 #define STDERR 2
 #define EXIT -1
@@ -22,7 +24,7 @@ static void* manage(void* param);
  * then, exit
  */
 void error(){
-    char* msg = "ERROR in System Call\n";
+    char* msg = "Error in system call\n";
     write(STDERR, msg, strlen(msg));
     exit(EXIT);
 }
@@ -39,7 +41,10 @@ ThreadPool* tpCreate(int numOfThreads){
     if (numOfThreads <= 0) return 0;
     // create thread pool
     ThreadPool* tp = (ThreadPool*)malloc(sizeof(ThreadPool));
-    if (tp == NULL) error();
+    if (tp == NULL) {
+        free(tp);
+        error();
+    }
     tp->queue = osCreateQueue();
     tp->numOfThreads = numOfThreads;
     tp->status = RUNNING;
@@ -68,21 +73,23 @@ static void* manage(void* param){
     if (tp == NULL) error();
     // while running or tpDestroy() called but queue wasn't empty
     while(tp->status == RUNNING || (!osIsQueueEmpty(tp->queue) && tp->status == FINISH)) {
-        pthread_mutex_lock(&tp->mutex);
+        if (0 != pthread_mutex_lock(&tp->mutex)) error();
         // when queue is empty
         while (tp->status == RUNNING && osIsQueueEmpty(tp->queue)) {
-            pthread_cond_wait(&tp->cv, &tp->mutex);
+            if (0 != pthread_cond_wait(&tp->cv, &tp->mutex)) error();
         }
-        Task *t = osDequeue(tp->queue);
-        pthread_mutex_unlock(&tp->mutex);
-        // call mission
-        if (t != NULL) {
-            (t->function)(t->params);
-            free(t);
-        }
+        //if (tp->status != TERMINATE){
+            Task *t = osDequeue(tp->queue);
+            if (0!= pthread_mutex_unlock(&tp->mutex)) error();
+            // call mission
+            if (t != NULL) {
+                (t->function)(t->params);
+                free(t);
+            }
+        //}
     }
-    // now cpDestroy() called and queue is empty
-    pthread_mutex_unlock(&tp->mutex);
+    // cpDestroy() was called and queue is empty
+    if (0 != pthread_mutex_unlock(&tp->mutex)) error();
     pthread_exit(NULL);
 }
 
@@ -96,30 +103,26 @@ void tpDestroy(ThreadPool* threadPool, int shouldWaitForTasks){
     // if tpDestroy() already called from other thread
     if (threadPool->status == TERMINATE || threadPool->status == FINISH) return;
     int i;
-    pthread_mutex_lock(&threadPool->mutex);
+    if (0!= pthread_mutex_lock(&threadPool->mutex)) error();
     // update status
     if (shouldWaitForTasks == 0) {
         threadPool->status = TERMINATE;
     } else {
         threadPool->status = FINISH;
     }
-    pthread_cond_broadcast(&threadPool->cv);
-    pthread_mutex_unlock(&threadPool->mutex);
+    if (0!= pthread_cond_broadcast(&threadPool->cv)) error();
+    if (0!= pthread_mutex_unlock(&threadPool->mutex)) error();
+
 
     // wait for all threads
     for (i = 0; i < threadPool->numOfThreads; ++i){
         pthread_join(threadPool->threads[i], NULL);
     }
-    // complete all task still in queue
-    while (!osIsQueueEmpty(threadPool->queue)){
-        Task* t = osDequeue(threadPool->queue);
-        free(t);
-    }
     // free all memory
     free(threadPool->threads);
     osDestroyQueue(threadPool->queue);
-    pthread_cond_destroy(&threadPool->cv);
-    pthread_mutex_destroy(&threadPool->mutex);
+    if (0 != pthread_cond_destroy(&threadPool->cv)) error();
+    if (0 != pthread_mutex_destroy(&threadPool->mutex)) error();
     free(threadPool);
 }
 
@@ -140,10 +143,10 @@ int tpInsertTask(ThreadPool* threadPool, void (*computeFunc) (void *), void* par
     t->params = param;
 
     // insert function to queue
-    pthread_mutex_lock(&(threadPool->mutex));
+    if (0 != pthread_mutex_lock(&(threadPool->mutex))) error();
     osEnqueue(threadPool->queue, t);
     if (0 != pthread_cond_broadcast(&threadPool->cv)) error();
-    pthread_mutex_unlock(&threadPool->mutex);
+    if (0!= pthread_mutex_unlock(&threadPool->mutex)) error();
     // success
     return 0;
 }

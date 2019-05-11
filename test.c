@@ -136,6 +136,7 @@ int doubleDestroy() {
    return 0;
 }
 
+
 int main() {
    srand(time(NULL));
    pthread_mutex_init(&TasksDoneLock, NULL);
@@ -153,10 +154,10 @@ int main() {
       if (shouldWaitForTasksTest(1))
          printf("Failed on destroy with shouldWaitForTasks = 1. tasks created != tasks done\n");
    }
-
    doubleDestroy();
 
    printf("---Tester Done---\n");
    return 0;
 }
 
+//valgrind --leak-check=yes ./a.out^C
